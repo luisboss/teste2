@@ -1,0 +1,669 @@
+﻿header("Access-Control-Allow-Origin: *");
+//$startTimer = microtime();
+
+$site_folder = '../../';
+
+
+
+
+$t = $_GET['t'];
+$filter = $_GET['filter'];
+$mod="mod_contas";
+
+if($t=='') $t='data';
+
+
+
+//echo $t.'<br>';
+//$t='data';
+
+
+
+if ($t=='data')
+{
+
+//echo $BG_SITE_FOLDER.'<br>';
+
+ $pagenum = $_GET['pagenum'];
+	$pagesize = $_GET['pagesize'];
+
+	//$pagenum =1;
+	//$pagesize = 10;
+
+
+
+$sql_join = '';
+$dbc = "SELECT  `tables`, sql_join
+FROM ".$dbPrefixo."bg_ct_lt_tipo_conteudo ".
+" where nome='".$mod."'";
+$result = $db->query($dbc);
+if (!$result) {echo "Failed to run query 1 (tipo_conteudo): (" . $db->_error() . ") ";
+} else {
+  if ($result->num_rows > 0) {
+      $sql_join=$result->fetchArray();
+	}
+}
+
+
+//$endTimer = microtime();
+//echo "<p>Passo 1 ".round(($endTimer - $startTimer), 2)." segundos. </p>";
+
+
+$list_fields = '';
+$list_sql_join = '';
+$dbc = "SELECT  datafield, list_real_name,  list_sql_join
+FROM ".$dbPrefixo."bg_ct_modules_field_list ".
+" where module='".$mod."'".
+" and ((list_type IS NOT NULL) or (list_type<>''))";
+//echo $dbc;
+$result = $db->query($dbc);
+if (!$result) {echo "Failed to run query 2: (" . $db->_error() . ") ";
+} else {
+  if ($result->num_rows > 0) {
+    foreach( $result->fetchAll() as $row ){
+          $list_fields.=$row->list_real_name." as ".$row->datafield.", ";
+		  $fields[]=$row->datafield;
+
+          $list_sql=str_replace('[DB_PREFIXO]',$dbPrefixo, $row->list_sql_join);
+
+          $list_sql_join.=str_replace('[USER_ID]',$_SESSION['BG_USERID'], $list_sql)."  ";
+        }//foreach
+     } //$result->num_rows
+} //if (!$result)
+$result->free;
+
+//$endTimer = microtime();
+//echo "<p>Passo 2 ".round(($endTimer - $startTimer), 2)." segundos. </p>";
+
+
+$sql_principal = "select ".$list_fields." ca.id, ca.atribuido_user_id  from ".$dbPrefixo."contas as ca ".$sql_join[0].' '.$list_sql_join;
+//echo $sql_principal.'<br>';
+$sql_principal_count = "select count(ca.id) as count from ".$dbPrefixo."contas as ca ".$sql_join[0].' '.$list_sql_join;
+
+
+
+
+
+	$start = $pagenum * $pagesize;
+	$limit = "  LIMIT $start, $pagesize";
+
+	$query = $sql_principal."  LIMIT $start, $pagesize";
+	$filterquery = $sql_principal;
+	$where = "";
+
+
+
+
+
+	// filter data.
+	if (isset($_GET['filterscount']))
+	{
+		$filterscount = $_GET['filterscount'];
+		//$filterscount = 1;
+
+		if ($filterscount > 0)
+		{
+			$where = " WHERE (";
+			$tmpdatafield = "";
+			$tmpfilteroperator = "";
+			for ($i=0; $i < $filterscount; $i++)
+		    {
+				// get the filter's value.
+				$filtervalue = $_GET["filtervalue" . $i];
+				// get the filter's condition.
+				$filtercondition = $_GET["filtercondition" . $i];
+				// get the filter's column.
+				$filterdatafield = $_GET["filterdatafield" . $i];
+				// get the filter's operator.
+				$filteroperator = $_GET["filteroperator" . $i];
+
+
+
+
+$dbc = "SELECT  datafield, list_real_name
+FROM ".$dbPrefixo."bg_ct_modules_field_list".
+" where module='".$mod."'".
+" and datafield='".$filterdatafield."'";
+//echo $dbc;
+$result = $db->query($dbc);
+
+	 if (!$result) {
+		 echo "Failed to run query 3 : (" . $db->_error() . ") ";
+
+	 } else {
+	  if ($result->num_rows > 0) {
+		   $array = $result->fetchArray();
+           $filterdatafield = $array['list_real_name'];
+     }//$result->num_rows
+} //if (!$result)
+$result->free;
+
+
+
+
+
+
+				if ($tmpdatafield == "")
+				{
+					$tmpdatafield = $filterdatafield;
+				}
+				else if ($tmpdatafield <> $filterdatafield)
+				{
+					$where .= ") AND (";
+				}
+				else if ($tmpdatafield == $filterdatafield)
+				{
+					if ($tmpfilteroperator == 0)
+					{
+						$where .= " AND ";
+					}
+					else $where .= " OR ";
+				}
+
+				$filtervalue = $db->escape($filtervalue);
+
+				// build the "WHERE" clause depending on the filter's condition, value and datafield.
+				switch($filtercondition)
+				{
+					case "NOT_EMPTY":
+					case "NOT_NULL":
+						$where .= " " . $filterdatafield . " NOT LIKE '" . "" ."'";
+						break;
+					case "EMPTY":
+					case "NULL":
+						$where .= " " . $filterdatafield . " LIKE '" . "" ."'";
+						break;
+					case "CONTAINS_CASE_SENSITIVE":
+						$where .= " BINARY  " . $filterdatafield . " LIKE '%" . $filtervalue ."%'";
+						break;
+					case "CONTAINS":
+						$where .= " " . $filterdatafield . " LIKE '%" . $filtervalue ."%'";
+						break;
+					case "DOES_NOT_CONTAIN_CASE_SENSITIVE":
+						$where .= " BINARY " . $filterdatafield . " NOT LIKE '%" . $filtervalue ."%'";
+						break;
+					case "DOES_NOT_CONTAIN":
+						$where .= " " . $filterdatafield . " NOT LIKE '%" . $filtervalue ."%'";
+						break;
+					case "EQUAL_CASE_SENSITIVE":
+						$where .= " BINARY " . $filterdatafield . " = '" . $filtervalue ."'";
+						break;
+					case "EQUAL":
+						$where .= " " . $filterdatafield . " = '" . $filtervalue ."'";
+						break;
+					case "NOT_EQUAL_CASE_SENSITIVE":
+						$where .= " BINARY " . $filterdatafield . " <> '" . $filtervalue ."'";
+						break;
+					case "NOT_EQUAL":
+						$where .= " " . $filterdatafield . " <> '" . $filtervalue ."'";
+						break;
+					case "GREATER_THAN":
+						$where .= " " . $filterdatafield . " > '" . $filtervalue ."'";
+						break;
+					case "LESS_THAN":
+						$where .= " " . $filterdatafield . " < '" . $filtervalue ."'";
+						break;
+					case "GREATER_THAN_OR_EQUAL":
+						$where .= " " . $filterdatafield . " >= '" . $filtervalue ."'";
+						break;
+					case "LESS_THAN_OR_EQUAL":
+						$where .= " " . $filterdatafield . " <= '" . $filtervalue ."'";
+						break;
+					case "STARTS_WITH_CASE_SENSITIVE":
+						$where .= " BINARY " . $filterdatafield . " LIKE '" . $filtervalue ."%'";
+						break;
+					case "STARTS_WITH":
+						$where .= " " . $filterdatafield . " LIKE '" . $filtervalue ."%'";
+						break;
+					case "ENDS_WITH_CASE_SENSITIVE":
+						$where .= " BINARY " . $filterdatafield . " LIKE '%" . $filtervalue ."'";
+						break;
+					case "ENDS_WITH":
+						$where .= " " . $filterdatafield . " LIKE '%" . $filtervalue ."'";
+						break;
+				}
+
+				if ($i == $filterscount - 1)
+				{
+					$where .= ") ";
+				}
+
+				$tmpfilteroperator = $filteroperator;
+				$tmpdatafield = $filterdatafield;
+			}
+			// build the query.
+
+
+
+			if ($filter != '')
+			{
+				$query = $sql_principal.$where.' and '.$filter.$limit;
+			} else {
+				$query = $sql_principal.$where.$limit;
+			}
+
+
+			
+
+            //save_error_log($db,$db_ct,'Contas',$file='',$id,"filter",$query);
+
+		}//if ($filterscount > 0)
+			
+	}//if (isset($_GET['filterscount']))
+    else {
+    	
+    	if ($filter != '')
+    	{
+    		$query = $sql_principal.' Where '.$filter.$limit;
+    	} else {
+    		$query = $sql_principal.$limit;
+    	}
+    	 
+    }
+    	
+
+
+
+
+
+
+	if (isset($_GET['sortdatafield']))
+	//if ($sortfield!='')
+	{
+		$sortfield = $_GET['sortdatafield'];
+		$sortorder = $_GET['sortorder'];
+
+		//$sortfield = 'nome';
+		//$sortorder = 'desc';
+
+		if ($sortorder != '')
+		{
+			if ($_GET['filterscount'] > 0)
+			{
+				if ($sortorder == "desc")
+				{
+					$query = $sql_principal.$where." ORDER BY" . " " . $sortfield . " DESC ".$limit;
+				}
+				else if ($sortorder == "asc")
+				{
+					$query = $sql_principal.$where." ORDER BY" . " " . $sortfield . " ASC ".$limit;
+				}
+			}
+			else
+			{
+				if ($sortorder == "desc")
+				{
+					$query = $sql_principal. " ORDER BY" . " " . $sortfield . " DESC ".$limit;
+				}
+				else if ($sortorder == "asc")
+				{
+					$query = $sql_principal. " ORDER BY" . " " . $sortfield . " ASC ".$limit;
+				}
+				//$query = $filterquery;
+			}
+		}
+           // save_error_log($db,$db_ct,'Contas',$file='',$id,"sort",$query);
+	}
+
+
+
+
+// echo '<br>';
+// echo $query;
+ //echo '<br>';
+
+
+			$sql = $sql_principal_count.$where; //"SELECT FOUND_ROWS() AS `found_rows`;";
+            //echo $sql;
+			$Result = $db->query($sql);
+			$row = $Result->fetchArray();
+	        //$new_total_rows = $rows->num_rows();
+			//$total_rows = $rows->num_rows();
+if ($Result) {
+	$total_rows = $row['count'];
+} else {
+	save_error_log($db,$db_ct,'Contas',$file='',$id,"Failed to run query 4: (" . $db->_error() . ") ",$query);
+custom_Highlight('error',"Failed to run query 4", $lang_array['msg']);
+die();
+}
+$Result->free;
+
+
+
+
+
+ $Result = $db->query($query);
+
+    if (!$Result) {
+       save_error_log($db,$db_ct,'Contas',$file='',$id,"Failed to run query 5: (" . $db->_error() . ") ",$query);
+	   custom_Highlight('error',"Failed to run query 5", $lang_array['msg']);
+	   die();
+	}
+
+//$endTimer = microtime();
+//echo "<p>Passo 3 ".round(($endTimer - $startTimer), 2)." segundos. </p>";
+
+
+	$list = null;
+	// get data and store in a json array
+
+
+
+//$array['nome']
+$count2 = count($fields);
+
+$array = $Result->fetchAllArray();
+$count = count($array);
+for ($i = 0; $i < $count; $i++) {
+	$list1[$i]['id']=($array[$i]['id']);
+  for ($j = 0; $j < $count2; $j++) {
+	  //echo $array[$i][$fields[$j]].'<br>';
+	$list1[$i][$fields[$j]]=($array[$i][$fields[$j]]);
+  }
+$list[] = $list1[$i];
+}
+
+
+/*for ($i = 0; $i < $count; $i++) {
+
+	$str ='id => '.$array[$i]['id'].',';
+
+	for ($j = 0; $j < $count2; $j++) {
+	 $str.=$fields[$j].' => '.$array[$i][$fields[$j]];
+	if($j < $count2) $str.=",";
+	}
+$list[] = array($str);
+}*/
+
+
+
+//$endTimer = microtime();
+//echo "<p>Passo 5 ".round(($endTimer - $startTimer), 2)." segundos. </p>";
+
+/*
+print_r($list).'<br><br><br>';
+
+echo '<br><br><br>';
+
+
+while( $row = $Result->fetchArray() ){
+
+$list[] = array(
+			'id' => $row['id'],
+			'tipo_conta' => $row['tipo_conta'],
+			'atribuido_user' => $row['atribuido_user'],
+			'nome' => $row['nome'],
+			'sector_actividade' => $row['sector_actividade'],
+			'status' => $row['status']
+		  );
+}*/
+
+      $data[] = array(
+       'TotalRows' => $total_rows,
+	   'Rows' => $list
+	);
+
+$Result->free;
+//print_r($list3);
+
+	echo json_encode($data);
+
+
+
+
+
+	//$db->close();
+
+} //if ($t='data')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+if ($t=='delete_list_bd')
+{
+$id = $_POST['id'];
+
+
+    $sql_principal = "select nome, localidade from ".$dbPrefixo."contas  where id=".$id;
+    $Result = $db->query($sql_principal);
+    if ($Result===false) {
+       save_error_log($db,$db_ct,'Contas',$file='',$id,"Failed to run query 4: (" . $db->_error() . ") ",$sql_principal);
+	   custom_Highlight('error',"Failed to run query", $lang_array['msg']);
+	   die();
+	} else {
+      $array = $Result->fetchArray();
+      $obs=$array['nome'].' - '.$array['localidade'];
+    }
+
+
+
+
+   //Falta verificar permissões
+
+    $deletedRows = $db->delete($dbPrefixo.'contas', array( 'id' => $id ) );
+
+    if($deletedRows){
+
+      $deletedRows = $db->delete($dbPrefixo.'contas_info', array( 'conta_id' => $id ) );
+      $deletedRows = $db->delete($dbPrefixo.'contas_filiais', array( 'conta_id' => $id ) );
+      $deletedRows = $db->delete($dbPrefixo.'contas_servicos', array( 'conta_id' => $id ) );
+
+	  save_log($db,'Contas', 'Eliminar BD', $id, $obs);
+	  custom_Highlight('success',"RECORD_DELETED", $translator);
+
+	} else {
+       save_error_log('Contas',$file='',$id,"Failed to run query 5: (" . $db->_error() . ") ",$sql_principal);
+	   custom_Highlight('error',"Failed to run query" , $lang_array['msg']);
+	}
+
+
+die();
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+if ($t=='delete_list')
+{
+$id = $_POST['id'];
+
+
+    $sql_principal = "select nome, localidade from ".$dbPrefixo."contas  where id=".$id;
+    $Result = $db->query($sql_principal);
+    if ($Result===false) {
+       save_error_log($db,$db_ct,'Contas',$file='',$id,"Failed to run query 4: (" . $db->_error() . ") ",$sql_principal);
+	   custom_Highlight('error',"Failed to run query", $lang_array['msg']);
+	   die();
+	} else {
+      $array = $Result->fetchArray();
+      $obs=$array['nome'].' - '.$array['localidade'];
+    }
+
+
+
+
+   //Falta verificar permissões
+
+   $deletedRows = "Update ".$dbPrefixo."contas set eliminado=1 where id=".$id;
+   $Result = $db->query($deletedRows);
+
+    if($Result){
+
+   $deletedRows = "Update ".$dbPrefixo."contas_info set eliminado=1 where conta_id=".$id;
+   $Result = $db->query($deletedRows);
+
+   $deletedRows = "Update ".$dbPrefixo."contas_filiais set eliminado=1 where conta_id=".$id;
+   $Result = $db->query($deletedRows);
+
+   $deletedRows = "Update ".$dbPrefixo."contas_servicos set eliminado=1 where conta_id=".$id;
+   $Result = $db->query($deletedRows);
+
+	  save_log($db,'Contas', 'Eliminar', $id, $obs);
+	  custom_Highlight('success',"RECORD_DELETED", $lang_array);
+
+	} else {
+       save_error_log($db,$db_ct,'Contas',$file='',$id,"Failed to run query 5: (" . $db->_error() . ") ",$sql_principal);
+	   custom_Highlight('error',"Failed to run query" , $lang_array['msg']);
+	}
+
+
+die();
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+if ($t=='delete')
+{
+$id = $_POST['id'];
+
+        $input_id= " <input type=\"text\" name=\"id\" id=\"id\" value=\"".$id."\" hidden=\"true\" />";
+
+    $sql_principal = "select nome, localidade from ".$dbPrefixo."contas  where id=".$id;
+    $Result = $db->query($sql_principal);
+    if ($Result===false) {
+       save_error_log($db,$db_ct,'Contas',$file='',$id,"Failed to run query 4: (" . $db->_error() . ") ",$sql_principal);
+
+		echo json_encode(array('status'=>'error',  'msg'=> custom_Highlight_text('error',"Failed to run query", $lang_array['msg']).$input_id));
+
+	   die();
+	} else {
+      $array = $Result->fetchArray();
+      $obs=$array['nome'].' - '.$array['localidade'];
+    }
+
+
+
+
+   //Falta verificar permissões
+
+   $deletedRows = "Update ".$dbPrefixo."contas set eliminado=1 where id=".$id;
+   $Result = $db->query($deletedRows);
+
+    if($Result){
+
+   $deletedRows = "Update ".$dbPrefixo."contas_info set eliminado=1 where conta_id=".$id;
+   $Result = $db->query($deletedRows);
+
+   $deletedRows = "Update ".$dbPrefixo."contas_filiais set eliminado=1 where conta_id=".$id;
+   $Result = $db->query($deletedRows);
+
+   $deletedRows = "Update ".$dbPrefixo."contas_servicos set eliminado=1 where conta_id=".$id;
+   $Result = $db->query($deletedRows);
+
+
+	  save_log($db,'Contas', 'Eliminar', $id, $obs);
+
+		$json_encode_text= json_encode(array('status'=>'success',  'msg'=> custom_Highlight_text('success','RECORD_DELETED', $lang_array['msg'])));
+
+
+	} else {
+       save_error_log($db, $db_ct,'Contas',$file='',$id,"Failed to run Delete query 5: (" . $db->_error() . ") ",$sql_principal);
+
+		$json_encode_text= json_encode(array('status'=>'error',  'msg'=> custom_Highlight_text('error','Failed to run Delete query', $lang_array['msg']).$input_id));
+
+	}
+
+
+echo $json_encode_text;
+
+
+die();
+
+}
+
+
+
+
+
+
+
+
+
+
+if ($t=='delete_bd')
+{
+$id = $_POST['id'];
+
+        $input_id= " <input type=\"text\" name=\"id\" id=\"id\" value=\"".$id."\" hidden=\"true\" />";
+
+    $sql_principal = "select nome, localidade from ".$dbPrefixo."contas  where id=".$id;
+    $Result = $db->query($sql_principal);
+    if ($Result===false) {
+       save_error_log($db,$db_ct,'Contas',$file='',$id,"Failed to run query 4: (" . $db->_error() . ") ",$sql_principal);
+
+		echo json_encode(array('status'=>'error',  'msg'=> custom_Highlight_text('error',"Failed to run query", $lang_array['msg']).$input_id));
+
+	   die();
+	} else {
+      $array = $Result->fetchArray();
+      $obs=$array['nome'].' - '.$array['localidade'];
+    }
+
+
+
+
+   //Falta verificar permissões
+
+   $deletedRows = $db->delete($dbPrefixo.'contas', array( 'id' => $id ) );
+
+    if($deletedRows){
+
+      $deletedRows = $db->delete($dbPrefixo.'contas_info', array( 'conta_id' => $id ) );
+      $deletedRows = $db->delete($dbPrefixo.'contas_filiais', array( 'conta_id' => $id ) );
+      $deletedRows = $db->delete($dbPrefixo.'contas_servicos', array( 'conta_id' => $id ) );
+
+	  save_log($db,'Contas', 'Eliminar BD', $id, $obs);
+
+		$json_encode_text= json_encode(array('status'=>'success',  'msg'=> custom_Highlight_text('success','RECORD_DELETED', $lang_array['msg'])));
+
+
+	} else {
+       save_error_log($db, $db_ct,'Contas',$file='',$id,"Failed to run Delete query 5: (" . $db->_error() . ") ",$sql_principal);
+
+		$json_encode_text= json_encode(array('status'=>'error',  'msg'=> custom_Highlight_text('error','Failed to run Delete query', $lang_array['msg']).$input_id));
+
+	}
+
+
+echo $json_encode_text;
+
+
+die();
+
+}
+
+
+
+
+
